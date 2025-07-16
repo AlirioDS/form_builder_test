@@ -1,0 +1,113 @@
+#!/usr/bin/env ruby
+require_relative '../config/environment'
+require 'yaml'
+
+ids = ARGV
+if ids.empty?
+  puts "Usage: #{$0} personal_information about_the_situation"
+  exit 1
+end
+
+questionnaires = ids.map { |id| QuestionnaireLoader.load(id) }
+responses = {}
+
+questionnaires.each do |form|
+  puts "\n== #{form['title']} =="
+  responses[form['id']] ||= {}
+
+  form['questions'].each do |q|
+    all_responses = responses.values.reduce({}, :merge)
+    
+    condition = q['visibility_condition']
+    if condition.nil? || condition.empty?
+      visible = true
+    else
+      visible = Conditions.build(condition, all_responses).true?
+    end
+    
+    next unless visible
+
+    case q['question_type']
+    when 'text'
+      loop do
+        requirements = []
+        min_length = q['config']['min_length']
+        
+        # Conditionally set max_length for the alias question
+        if q['id'] == 'alias_name' && all_responses['has_alias'] == true
+          max_length = 200
+        else
+          max_length = q['config']['max_length']
+        end
+        
+        if min_length && max_length
+          requirements << "at least #{min_length} characters and at most #{max_length} characters"
+        elsif min_length
+          requirements << "at least #{min_length} characters"
+        elsif max_length
+          requirements << "at most #{max_length} characters"
+        end
+        
+        if requirements.any?
+          puts "  You can enter #{requirements.join(' and ')}."
+        end
+        
+        print "#{q['label']}: "
+        input = STDIN.gets.chomp
+        
+        # Validate input
+        valid = true
+        error_messages = []
+        
+        if min_length && input.length < min_length
+          valid = false
+          error_messages << "Input is too short (#{input.length} characters). Minimum is #{min_length} characters."
+        end
+        
+        if max_length && input.length > max_length
+          valid = false
+          error_messages << "Input is too long (#{input.length} characters). Maximum is #{max_length} characters."
+        end
+        
+        if valid
+          responses[form['id']][q['id']] = input
+          break
+        else
+          puts "  Error: #{error_messages.join(' ')}"
+          puts "  Please try again."
+        end
+      end
+
+    when 'boolean'
+      print "#{q['label']} (y/n): "
+      input = STDIN.gets.chomp.downcase.start_with?('y')
+
+    when 'radio', 'dropdown'
+      puts q['label']
+      q['config']['options'].each_with_index do |opt, i|
+        puts "  #{i+1}) #{opt['label']}"
+      end
+      print "> "
+      choice = STDIN.gets.to_i - 1
+      input = q['config']['options'][choice]['value'] rescue nil
+
+    when 'checkbox'
+      puts q['label']
+      q['config']['options'].each_with_index do |opt, i|
+        puts "  #{i+1}) #{opt['label']}"
+      end
+      print "Select numbers comma-separated: "
+      nums = STDIN.gets.chomp.split(',').map(&:to_i)
+      input = nums.map { |n| q['config']['options'][n-1]['value'] rescue nil }.compact
+
+    else
+      print "#{q['label']}: "
+      input = STDIN.gets.chomp
+    end
+
+    responses[form['id']][q['id']] = input
+  end
+end
+
+puts "\n=== Final Result ==="
+puts QuestionnairePrinter.new(questionnaires, responses).render

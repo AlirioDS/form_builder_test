@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["id","title","questions"],
+  "properties": {
+    "id": {"type":"string"},
+    "title": {"type":"string"},
+    "questions": {
+      "type":"array",
+      "items": {
+        "type":"object",
+        "required": ["id","label","question_type","position"],
+        "properties": {
+          "id": {"type":"string"},
+          "label": {"type":"string"},
+          "question_type": {"enum":["text","checkbox","radio","dropdown","boolean"]},
+          "position": {"type":"integer"},
+          "config": {"type":"object"},
+          "visibility_condition": {"type":"object"}
+        }
+      }
+    }
+  }
+}
